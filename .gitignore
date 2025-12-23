@@ -5,3 +5,4 @@
 *.der
 *.p12
 *.pfx
+.env
