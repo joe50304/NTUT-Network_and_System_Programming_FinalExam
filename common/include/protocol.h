@@ -1,54 +1,75 @@
+/*
+ * protocol.h
+ * Custom Banking Protocol Definition
+ * Format: [Packet Length (4 bytes)] + [OpCode (2 bytes)] + [Checksum (2 bytes)] + [Data Content]
+ */
+
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-// ==========================================
-// 1. Operation Codes (業務指令)
-// ==========================================
-// Client -> Server
-#define OP_LOGIN       0x1001  // 登入
-#define OP_DEPOSIT     0x2001  // 存款
-#define OP_WITHDRAW    0x2002  // 提款
-#define OP_BALANCE     0x2003  // 查詢餘額
-#define OP_EXIT        0x9999  // 斷線
+// Protocol Constants
+#define MAX_DATA_SIZE 1024
+#define PROTOCOL_HEADER_SIZE 8  // 4 (length) + 2 (opcode) + 2 (checksum)
 
-// Server -> Client (Response Codes)
-#define RESP_SUCCESS   0x0000  // 成功
-#define RESP_ERR_AUTH  0xE001  // 帳號密碼錯誤
-#define RESP_ERR_BAL   0xE002  // 餘額不足
-#define RESP_ERR_SYS   0xEFFF  // 系統錯誤
+// Operation Codes
+#define OP_CREATE_ACCOUNT  0x0001
+#define OP_DEPOSIT         0x0002
+#define OP_WITHDRAW        0x0003
+#define OP_BALANCE         0x0004
+#define OP_RESPONSE        0x00FF
 
-// ==========================================
-// 2. 封包結構 (Header + Body)
-// ==========================================
+// Response Status Codes
+#define STATUS_SUCCESS            0
+#define STATUS_ERROR             -1
+#define STATUS_ACCOUNT_NOT_FOUND -2
+#define STATUS_INSUFFICIENT_FUNDS -3
+#define STATUS_ACCOUNT_EXISTS    -4
+#define STATUS_DB_FULL           -5
+#define STATUS_INVALID_AMOUNT    -6
 
-// [Header] 固定大小: 12 Bytes
-// 結構: [Length (4)] + [OpCode (2)] + [Checksum (2)] + [ReqID (4)]
+// Banking Packet Structure
 typedef struct {
-    uint32_t length;      // 整個封包長度 (Header + Body)
-    uint16_t op_code;     // 操作類型 (如 OP_DEPOSIT)
-    uint16_t checksum;    // 簡單完整性校驗 (CRC16 或 Sum)
-    uint32_t req_id;      // 請求 ID (Client 生成，用於追蹤 Latency)
-} __attribute__((packed)) PacketHeader;
+    uint32_t packet_length;      // Total packet size (including header)
+    uint16_t opcode;             // Operation code
+    uint16_t checksum;           // CRC16 checksum for data integrity
+    char data[MAX_DATA_SIZE];    // Variable length payload
+} __attribute__((packed)) BankingPacket;
 
-// [Body 1] 登入請求 (Login Payload)
+// Request/Response Payload Structures
 typedef struct {
-    char username[32];
-    char password[32];
-} __attribute__((packed)) LoginRequest;
+    char account_id[20];
+    double initial_balance;
+} __attribute__((packed)) CreateAccountRequest;
 
-// [Body 2] 交易請求 (存款/提款)
 typedef struct {
-    uint32_t account_id;  // 帳號 ID (若是 Session 制可省略，看設計)
-    int32_t  amount;      // 金額
-} __attribute__((packed)) TransactionRequest;
+    char account_id[20];
+    double amount;
+} __attribute__((packed)) DepositRequest;
 
-// [Body 3] 通用回應 (Server 回傳的 Payload)
 typedef struct {
-    uint16_t status_code; // RESP_SUCCESS 或錯誤碼
-    int32_t  balance;     // 當前餘額 (交易後更新)
-    char     message[64]; // 文字訊息 (如 "Deposit OK")
-} __attribute__((packed)) GeneralResponse;
+    char account_id[20];
+    double amount;
+} __attribute__((packed)) WithdrawRequest;
+
+typedef struct {
+    char account_id[20];
+} __attribute__((packed)) BalanceRequest;
+
+typedef struct {
+    int status;
+    char message[256];
+    double balance;  // For balance query or final balance after operation
+} __attribute__((packed)) BankingResponse;
+
+// Protocol Functions
+uint16_t calculate_checksum(const char *data, size_t length);
+int verify_checksum(const BankingPacket *packet);
+int pack_request(BankingPacket *packet, uint16_t opcode, const void *data, size_t data_size);
+int unpack_request(const BankingPacket *packet, void *data, size_t data_size);
+int pack_response(BankingPacket *packet, const BankingResponse *response);
+int unpack_response(const BankingPacket *packet, BankingResponse *response);
 
 #endif // PROTOCOL_H
