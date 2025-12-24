@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include "client_core.h"
+#include "crypto.h"
 
 #define CA_CERT_PATH "certificate/ca.crt"
 #define CLIENT_CERT_PATH "certificate/client.crt"
@@ -96,67 +97,75 @@ int client_connect(ClientContext *client, const char *ip, int port) {
     return 0;
 }
 
-// 3. 發送請求
+// 3. 發送請求 (已加入安全性 Hook)
 int client_send(ClientContext *client, uint16_t op_code, void *payload, uint32_t payload_len) {
     if (!client->is_connected || !client->ssl) return -1;
 
-    // 準備 Header
     PacketHeader header;
     header.length = sizeof(PacketHeader) + payload_len;
     header.op_code = op_code;
-    header.req_id = rand(); // 簡單實作，正式版可以用計數器
-    header.checksum = 0;    // TODO: 之後實作 Checksum 計算
+    header.req_id = rand(); 
+    
+    // [Security Hook 1] 計算 Checksum
+    // 這裡我們計算 payload 的校驗碼放入 Header
+    // 如果沒有 Payload，Checksum 為 0
+    if (payload && payload_len > 0) {
+        header.checksum = calculate_checksum(payload, payload_len);
+    } else {
+        header.checksum = 0;
+    }
 
-    // 使用緩衝區一次發送 (減少 System Call 呼叫次數)
-    // 注意：若 payload 很大，可能需要分段，但這裡假設封包小
-    char buffer[4096]; 
+    char buffer[4096];
     if (header.length > sizeof(buffer)) {
         fprintf(stderr, "Packet too large!\n");
         return -1;
     }
 
+    // 複製 Header
     memcpy(buffer, &header, sizeof(PacketHeader));
+    
+    // 複製 Body
     if (payload && payload_len > 0) {
         memcpy(buffer + sizeof(PacketHeader), payload, payload_len);
     }
 
-    // 透過 SSL 發送 (加密)
     int bytes_sent = SSL_write(client->ssl, buffer, header.length);
     if (bytes_sent <= 0) {
-        handle_ssl_error("SSL Write failed");
+        // handle_ssl_error("SSL Write failed"); // 暫時註解避免干擾輸出
         return -1;
     }
 
     return bytes_sent;
 }
 
-// 4. 接收回應
+// 4. 接收回應 (已加入安全性 Hook)
 int client_receive(ClientContext *client, PacketHeader *header_out, void *body_buffer, uint32_t buffer_size) {
     if (!client->is_connected || !client->ssl) return -1;
 
-    // 先讀取 Header (固定長度)
+    // 1. 讀取 Header
     int bytes = SSL_read(client->ssl, header_out, sizeof(PacketHeader));
-    if (bytes <= 0) {
-        // Server 可能斷線
-        return -1;
-    }
+    if (bytes <= 0) return -1;
 
-    // 計算 Body 長度
     uint32_t body_len = header_out->length - sizeof(PacketHeader);
+    
+    // 2. 讀取 Body
     if (body_len > 0) {
-        if (body_len > buffer_size) {
-            fprintf(stderr, "Buffer overflow risk! Body len: %d\n", body_len);
-            return -1;
-        }
-        // 讀取 Body
-        // 注意：SSL_read 不保證一次讀完，嚴謹做法要用迴圈讀取直到滿 body_len
-        // 這裡為了簡化示範先讀一次，壓力測試若出錯需改為迴圈
+        if (body_len > buffer_size) return -1; // Buffer 不夠大
+        
         int body_read = SSL_read(client->ssl, body_buffer, body_len);
         if (body_read <= 0) return -1;
+
+        // [Security Hook 2] 驗證 Checksum
+        // Server 傳回來的資料，我們也要檢查有沒有壞掉
+        if (!verify_checksum(header_out->checksum, body_buffer, body_len)) {
+            fprintf(stderr, "[Security Alert] Checksum Mismatch! Data might be corrupted.\n");
+            return -2; // 回傳特殊錯誤碼
+        }
+        
         return body_read;
     }
 
-    return 0; // 只有 Header 沒有 Body
+    return 0; 
 }
 
 // 5. 斷線與清理
