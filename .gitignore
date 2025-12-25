@@ -1,8 +1,0 @@
-*.key
-*.pem
-*.csr
-*.crt
-*.der
-*.p12
-*.pfx
-.env
