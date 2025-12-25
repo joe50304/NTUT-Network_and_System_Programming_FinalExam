@@ -40,13 +40,15 @@ static SSL_CTX *ssl_ctx = NULL;
 // Signal handler for graceful shutdown
 void signal_handler(int signum) {
     if (signum == SIGINT || signum == SIGTERM) {
-        printf("\n[Master] Received signal %d, initiating graceful shutdown...\n", signum);
-        keep_running = 0;
-        
-        // Close listening socket to unblock accept()
-        if (server_fd >= 0) {
-            close(server_fd);
-            server_fd = -1;
+        if (keep_running) {  // Only print once
+            printf("\n[Master] Received signal %d, initiating graceful shutdown...\n", signum);
+            keep_running = 0;
+
+            // Close listening socket to unblock accept()
+            if (server_fd >= 0) {
+                close(server_fd);
+                server_fd = -1;
+            }
         }
     }
 }
@@ -272,9 +274,15 @@ void process_request(SSL *ssl, AccountDB *db, const BankingPacket *req_packet) {
 void worker_main(int worker_id, AccountDB *db) {
     printf("[Worker %d] Started (PID: %d)\n", worker_id, getpid());
     
-    // Worker should ignore SIGINT/SIGTERM, master will kill them
-    signal(SIGINT, SIG_IGN);
-    signal(SIGTERM, SIG_IGN);
+    // Worker signal handler for graceful shutdown
+    void worker_signal_handler(int signum) {
+        if (signum == SIGTERM) {
+            printf("[Worker %d] Received shutdown signal, exiting...\n", worker_id);
+            exit(0);
+        }
+    }
+    
+    signal(SIGTERM, worker_signal_handler);
     
     while (1) {
         // Accept connection (blocking, will be interrupted by master shutdown)

@@ -65,7 +65,7 @@ void *worker_thread(void *args) {
     
     // Setup TLS
     TLSConfig tls_config = {
-        .ca_cert_path = "certificate/rootCA.crt", // Assuming running from project root
+        .ca_cert_path = "certificate/ca.crt", // Assuming running from project root
         .client_cert_path = "certificate/client.crt",
         .client_key_path = "certificate/client.key",
         .verify_peer = t_args->verify_cert
