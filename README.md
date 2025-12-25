@@ -35,7 +35,15 @@ sudo apt-get update
 sudo apt-get install libssl-dev
 ```
 
-2. **編譯所有目標**:
+2. **生成 SSL 憑證 (Certificates)**:
+為了啟動 TLS 加密連線，請先執行腳本產生測試憑證：
+```bash
+./gen_certs.sh
+```
+> [!WARNING]
+> 本專案產生的憑證與金鑰 (Private Keys) 僅供測試用途，**並非**安全的生產環境金鑰，請勿用於真實機敏場景。
+
+3. **編譯所有目標**:
 ```bash
 # 清理並編譯所有目標
 make clean && make all
