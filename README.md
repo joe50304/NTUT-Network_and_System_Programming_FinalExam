@@ -88,8 +88,9 @@ make clean && make all
 - `common/`: 共用 Header 與 Source Code (封裝為 libcommon)
 
 ---
-**Note**: 本專案為系統程式設計期末專案實作。
-**Note**: 分工如下：
-114c75016 : OTP Server & SSL Certificate
-113c53026 : Banking Server & Account DB
+**Note**: 本專案為系統程式設計期末專案實作。  
+
+**Note**: 分工如下：  
+114c75016 : OTP Server & SSL Certificate  
+113c53026 : Banking Server & Account DB  
 114c75035 : Banking Client & Stress Test Client
