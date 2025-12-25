@@ -22,6 +22,10 @@ SERVER_OBJ_DIR = $(OBJ_DIR)/server
 CLIENT_SRC_DIR = client/src
 CLIENT_OBJ_DIR = $(OBJ_DIR)/client/src
 
+# Stress Test 目錄
+STRESS_SRC_DIR = stress_test
+STRESS_OBJ_DIR = $(OBJ_DIR)/stress_test
+
 # Common 目錄（共用）
 # 支援兩種結構：
 # 1. common/src/*.c (組員的結構)
@@ -56,14 +60,16 @@ COMMON_OBJS = $(COMMON_OBJS_1) $(COMMON_OBJS_2)
 # ==========================================
 SERVER_TARGET = $(BIN_DIR)/banking_server
 CLIENT_TARGET = $(BIN_DIR)/banking_client
-
+OTP_TARGET = $(BIN_DIR)/otp_server
+STRESS_TARGET = $(BIN_DIR)/stress_client
+COMMON_LIB = $(BIN_DIR)/libcommon.a
 # ==========================================
 # 主要規則
 # ==========================================
 .PHONY: all server client directories clean clean-ipc help
 
 # 預設：編譯 Server 和 Client
-all: directories server client
+all: directories $(COMMON_LIB) server client otp stress
 
 # 只編譯 Server（你的部分）
 server: directories $(SERVER_TARGET)
@@ -71,24 +77,34 @@ server: directories $(SERVER_TARGET)
 	@echo "Run: ./$(SERVER_TARGET) 8888 0"
 
 # 只編譯 Client（組員的部分）
-client: directories $(CLIENT_TARGET)
+client: directories $(COMMON_LIB) $(CLIENT_TARGET)
 	@echo "✅ Client compiled successfully!"
 	@echo "Run: ./$(CLIENT_TARGET) localhost 8888 0"
+
+# 只編譯 Stress Client
+stress: directories $(COMMON_LIB) $(STRESS_TARGET)
+	@echo "✅ Stress Client compiled successfully!"
+	@echo "Run: ./$(STRESS_TARGET) 127.0.0.1 8888 100 100 0"
+
+# 只編譯 OTP Server
+otp: directories $(OTP_TARGET)
+	@echo "✅ OTP Server compiled successfully!"
 
 # 建立必要目錄
 directories:
 	@mkdir -p $(BIN_DIR)
 	@mkdir -p $(SERVER_OBJ_DIR)
 	@mkdir -p $(CLIENT_OBJ_DIR)
+	@mkdir -p $(STRESS_OBJ_DIR)
 	@mkdir -p $(COMMON_OBJ_DIR_1)
 	@mkdir -p $(COMMON_OBJ_DIR_2)
 
 # ==========================================
 # Server 編譯規則（你的部分）
 # ==========================================
-$(SERVER_TARGET): $(SERVER_OBJS) $(COMMON_OBJS)
+$(SERVER_TARGET): $(SERVER_OBJS) $(COMMON_LIB)
 	@echo "🔗 Linking Server Application..."
-	$(CC) $(SERVER_OBJS) $(COMMON_OBJS) -o $@ $(LDFLAGS)
+	$(CC) $(SERVER_OBJS) -L$(BIN_DIR) -lcommon -o $@ $(LDFLAGS)
 	@echo "Server binary created: $@"
 
 $(SERVER_OBJ_DIR)/%.o: $(SERVER_SRC_DIR)/%.c
@@ -98,9 +114,9 @@ $(SERVER_OBJ_DIR)/%.o: $(SERVER_SRC_DIR)/%.c
 # ==========================================
 # Client 編譯規則（組員的部分）
 # ==========================================
-$(CLIENT_TARGET): $(CLIENT_OBJS) $(COMMON_OBJS)
+$(CLIENT_TARGET): $(CLIENT_OBJS) $(COMMON_LIB)
 	@echo "🔗 Linking Client Application..."
-	$(CC) $(CLIENT_OBJS) $(COMMON_OBJS) -o $@ $(LDFLAGS)
+	$(CC) $(CLIENT_OBJS) -L$(BIN_DIR) -lcommon -o $@ $(LDFLAGS)
 	@echo "Client binary created: $@"
 
 $(CLIENT_OBJ_DIR)/%.o: $(CLIENT_SRC_DIR)/%.c
@@ -108,8 +124,32 @@ $(CLIENT_OBJ_DIR)/%.o: $(CLIENT_SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ==========================================
-# Common 編譯規則（共用模組）
+# OTP 編譯規則
 # ==========================================
+
+$(OTP_TARGET): otp_server/otp_server.c
+	$(CC) $(CFLAGS) otp_server/otp_server.c -o $@
+
+# ==========================================
+# Stress Client 編譯規則
+# ==========================================
+$(STRESS_TARGET): $(OBJ_DIR)/stress_test/stress_client.o $(COMMON_LIB)
+	@echo "🔗 Linking Stress Client..."
+	$(CC) $(OBJ_DIR)/stress_test/stress_client.o -L$(BIN_DIR) -lcommon -o $@ $(LDFLAGS)
+	@echo "Stress Client binary created: $@"
+
+$(OBJ_DIR)/stress_test/stress_client.o: $(STRESS_SRC_DIR)/stress_client.c
+	@echo "📝 Compiling Stress Client: $<"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# ==========================================
+# Common 編譯規則（共用模組） - 靜態函式庫
+# ==========================================
+$(COMMON_LIB): $(COMMON_OBJS)
+	@echo "📚 Archiving Common Library..."
+	ar rcs $@ $^
+	@echo "Static Library created: $@"
+
 # 支援 common/src/*.c (組員的結構)
 $(COMMON_OBJ_DIR_1)/%.o: $(COMMON_SRC_DIR_1)/%.c
 	@echo "📚 Compiling Common (src): $<"

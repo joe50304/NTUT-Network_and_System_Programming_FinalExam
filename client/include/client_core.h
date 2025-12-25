@@ -4,7 +4,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <netinet/in.h>
-#include "protocol.h"
+#include "../common/include/protocol.h"
 
 // 定義一個結構來管理連線狀態，避免全域變數
 typedef struct {

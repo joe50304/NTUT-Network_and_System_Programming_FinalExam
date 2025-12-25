@@ -21,10 +21,11 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
-#include "../common/protocol.h"
-#include "../common/account.h"
-#include "../common/ipc.h"
-#include "../common/tls_wrapper.h"
+#include "../common/include/protocol.h"
+#include "../common/include/account.h"
+#include "../common/include/ipc.h"
+#include "../common/include/tls_wrapper.h"
+#include "../common/include/otp_ipc.h"
 
 #define MAX_WORKERS 5
 #define DEFAULT_PORT 8888
@@ -56,12 +57,62 @@ void sigchld_handler(int signum) {
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
+// 內部 helper: 送出 Struct 給 OTP Server 並接收回應
+int call_otp_service(int opcode, const char *account, const char *otp_in, char *otp_out) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return 0;
+
+    struct sockaddr_in serv_addr;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(OTP_PORT);
+    inet_pton(AF_INET, OTP_IP, &serv_addr.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Cannot connect to OTP Server");
+        close(sock);
+        return 0;
+    }
+
+    // 1. 準備請求包
+    OtpIpcRequest req;
+    memset(&req, 0, sizeof(req));
+    req.op_code = opcode;
+    strncpy(req.account, account, sizeof(req.account) - 1);
+    if (otp_in) strncpy(req.otp_code, otp_in, sizeof(req.otp_code) - 1);
+
+    // 2. 傳送
+    write(sock, &req, sizeof(req));
+
+    // 3. 接收回應
+    OtpIpcResponse res;
+    int bytes = read(sock, &res, sizeof(res));
+    close(sock);
+
+    if (bytes > 0 && res.status == 1) {
+        if (otp_out) strncpy(otp_out, res.otp_code, 8); // 如果是 Gen，把 OTP 帶出來
+        return 1; // 成功
+    }
+    return 0; // 失敗
+}
+
+// 替換原本的 request_otp_generation
+int request_otp_generation(const char *account, char *out_otp) {
+    // 呼叫我們的自定義協定
+    return call_otp_service(OTP_OP_GENERATE, account, NULL, out_otp);
+}
+
+// 替換原本的 verify_otp_remote
+int verify_otp_remote(const char *account, const char *otp) {
+    // 呼叫我們的自定義協定
+    return call_otp_service(OTP_OP_VERIFY, account, otp, NULL);
+}
+
 // Process client request
 void process_request(SSL *ssl, AccountDB *db, const BankingPacket *req_packet) {
     BankingResponse response;
     memset(&response, 0, sizeof(response));
     
-    uint16_t opcode = ntohs(req_packet->opcode);
+    uint16_t opcode = ntohs(req_packet->header.op_code);
     
     switch (opcode) {
         case OP_CREATE_ACCOUNT: {
@@ -144,6 +195,42 @@ void process_request(SSL *ssl, AccountDB *db, const BankingPacket *req_packet) {
             break;
         }
         
+        case OP_REQ_OTP: {
+            OtpRequest req;
+            if (unpack_request(req_packet, &req, sizeof(req)) == 0) {
+                char otp_code[10] = {0};
+                if (request_otp_generation(req.account_id, otp_code)) {
+                     response.status = STATUS_SUCCESS;
+                     // In a real system, OTP is sent via SMS. Here we return it for testing convenience
+                     snprintf(response.message, sizeof(response.message), "OTP Generated: %s", otp_code);
+                } else {
+                     response.status = STATUS_ERROR;
+                     snprintf(response.message, sizeof(response.message), "OTP Generation Failed");
+                }
+            } else {
+                response.status = STATUS_ERROR;
+                snprintf(response.message, sizeof(response.message), "Invalid request format");
+            }
+            break;
+        }
+
+        case OP_LOGIN: {
+            LoginRequest req;
+             if (unpack_request(req_packet, &req, sizeof(req)) == 0) {
+                if (verify_otp_remote(req.account_id, req.otp)) {
+                    response.status = STATUS_SUCCESS;
+                    snprintf(response.message, sizeof(response.message), "Login Successful");
+                } else {
+                    response.status = STATUS_ERROR;
+                    snprintf(response.message, sizeof(response.message), "Invalid OTP");
+                }
+            } else {
+                response.status = STATUS_ERROR;
+                 snprintf(response.message, sizeof(response.message), "Invalid request format");
+            }
+            break;
+        }
+
         case OP_BALANCE: {
             BalanceRequest req;
             if (unpack_request(req_packet, &req, sizeof(req)) == 0) {
@@ -235,7 +322,7 @@ void worker_main(int worker_id, AccountDB *db) {
             }
             
             // Verify checksum
-            if (verify_checksum(&packet) != 0) {
+            if (verify_packet_checksum(&packet) != 0) {
                 printf("[Worker %d] Checksum verification failed\n", worker_id);
                 BankingResponse error_resp;
                 memset(&error_resp, 0, sizeof(error_resp));

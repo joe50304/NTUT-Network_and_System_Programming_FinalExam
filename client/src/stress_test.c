@@ -62,20 +62,55 @@ void *worker_routine(void *arg) {
         pthread_barrier_wait(&barrier); // 還是要等，避免卡死其他執行緒
         return NULL;
     }
+    
+    // --- 新增：自動化 OTP 登入流程 ---
+    char my_account[20];
+    snprintf(my_account, sizeof(my_account), "USER_%d", tid);
+    
+    // 1. 請求 OTP
+    OtpRequest otp_req;
+    strncpy(otp_req.account_id, my_account, sizeof(otp_req.account_id));
+    
+    PacketHeader header_out;
+    char recv_buf[1024];
+    
+    // 發送請求
+    if (client_send(&ctx, OP_REQ_OTP, &otp_req, sizeof(otp_req)) > 0) {
+        // 接收回應
+        if (client_receive(&ctx, &header_out, recv_buf, sizeof(recv_buf)) >= 0) {
+            BankingResponse *resp = (BankingResponse *)recv_buf;
+            
+            if (resp->status == 0) { // 假設 0 是 STATUS_SUCCESS
+                // 2. 登入 (Server 把 OTP 放在 message 裡回傳)
+                LoginRequest login_req;
+                strncpy(login_req.account_id, my_account, sizeof(login_req.account_id));
+                strncpy(login_req.otp, resp->message, sizeof(login_req.otp)); 
+                
+                client_send(&ctx, OP_LOGIN, &login_req, sizeof(login_req));
+                client_receive(&ctx, &header_out, recv_buf, sizeof(recv_buf));
+                // 這裡可以加判斷是否登入成功
+            }
+        }
+    }
+
 
     // 2. 等待起跑信號 (確保所有連線都建立好了才開始攻擊)
     pthread_barrier_wait(&barrier);
 
     // 3. 開始迴圈發送請求
     struct timespec start_ts, end_ts;
-    char recv_buf[1024];
-    PacketHeader header_out;
+
 
     for (int i = 0; i < args->requests; i++) {
         // 隨機產生交易 (存款/提款/查餘額)
         int action = rand_r(&args->rand_seed) % 3;
         uint16_t op;
-        TransactionRequest trans_req;
+        // Use a union or largest struct to hold request data
+        union {
+            DepositRequest dep;
+            WithdrawRequest wid;
+            BalanceRequest bal;
+        } trans_req;
         
         switch (action) {
             case 0: op = OP_DEPOSIT; break;
@@ -83,8 +118,14 @@ void *worker_routine(void *arg) {
             default: op = OP_BALANCE; break;
         }
 
-        trans_req.account_id = tid; // 簡單用 thread id 當帳號
-        trans_req.amount = 10;
+        if (op == OP_DEPOSIT || op == OP_WITHDRAW) {
+             DepositRequest *req = (DepositRequest *)&trans_req; // Cast to reuse
+             snprintf(req->account_id, sizeof(req->account_id), "%d", tid);
+             req->amount = 10;
+        } else if (op == OP_BALANCE) {
+             BalanceRequest *req = (BalanceRequest *)&trans_req;
+             snprintf(req->account_id, sizeof(req->account_id), "%d", tid);
+        }
 
         // --- 計時開始 ---
         clock_gettime(CLOCK_MONOTONIC, &start_ts);

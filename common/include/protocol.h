@@ -12,7 +12,7 @@
 
 // Protocol Constants
 #define MAX_DATA_SIZE 1024
-#define PROTOCOL_HEADER_SIZE 8  // 4 (length) + 2 (opcode) + 2 (checksum)
+
 
 // Operation Codes
 #define OP_CREATE_ACCOUNT  0x0001
@@ -20,6 +20,8 @@
 #define OP_WITHDRAW        0x0003
 #define OP_BALANCE         0x0004
 #define OP_RESPONSE        0x00FF
+#define OP_REQ_OTP         0x0005
+#define OP_LOGIN           0x0006
 
 // Response Status Codes
 #define STATUS_SUCCESS            0
@@ -31,11 +33,19 @@
 #define STATUS_INVALID_AMOUNT    -6
 
 // Banking Packet Structure
+
 typedef struct {
-    uint32_t packet_length;      // Total packet size (including header)
-    uint16_t opcode;             // Operation code
-    uint16_t checksum;           // CRC16 checksum for data integrity
-    char data[MAX_DATA_SIZE];    // Variable length payload
+    uint32_t length;    // 對應 packet_length
+    uint16_t op_code;   // 對應 opcode
+    uint16_t checksum;
+    uint32_t req_id;    // 新增：用於追蹤請求
+} __attribute__((packed)) PacketHeader;
+
+#define PROTOCOL_HEADER_SIZE sizeof(PacketHeader)
+
+typedef struct {
+    PacketHeader header;
+    char data[MAX_DATA_SIZE];
 } __attribute__((packed)) BankingPacket;
 
 // Request/Response Payload Structures
@@ -64,9 +74,17 @@ typedef struct {
     double balance;  // For balance query or final balance after operation
 } __attribute__((packed)) BankingResponse;
 
+typedef struct {
+    char account_id[20];
+} __attribute__((packed)) OtpRequest;
+
+typedef struct {
+    char account_id[20];
+    char otp[10];
+} __attribute__((packed)) LoginRequest;
+
 // Protocol Functions
-uint16_t calculate_checksum(const char *data, size_t length);
-int verify_checksum(const BankingPacket *packet);
+int verify_packet_checksum(const BankingPacket *packet);
 int pack_request(BankingPacket *packet, uint16_t opcode, const void *data, size_t data_size);
 int unpack_request(const BankingPacket *packet, void *data, size_t data_size);
 int pack_response(BankingPacket *packet, const BankingResponse *response);
