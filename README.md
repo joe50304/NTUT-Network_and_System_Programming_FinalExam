@@ -25,10 +25,17 @@
 - Compiler: GCC
 - Libraries: OpenSSL (`libssl-dev`)
 
-## 編譯說明 (Build)
+## 📦 安裝與編譯說明 (Build)
 
 所有元件皆已透過 Makefile 整合。
 
+1. **安裝相依套件 (Ubuntu/Debian)**:
+```bash
+sudo apt-get update
+sudo apt-get install libssl-dev
+```
+
+2. **編譯所有目標**:
 ```bash
 # 清理並編譯所有目標
 make clean && make all
