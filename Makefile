@@ -19,8 +19,8 @@ SERVER_SRC_DIR = server
 SERVER_OBJ_DIR = $(OBJ_DIR)/server
 
 # Client 目錄（組員的部分）
-CLIENT_SRC_DIR = client/src
-CLIENT_OBJ_DIR = $(OBJ_DIR)/client/src
+CLIENT_SRC_DIR = client
+CLIENT_OBJ_DIR = $(OBJ_DIR)/client
 
 # Stress Test 目錄
 STRESS_SRC_DIR = stress_test
@@ -43,7 +43,7 @@ SERVER_SRCS = $(wildcard $(SERVER_SRC_DIR)/*.c)
 SERVER_OBJS = $(patsubst $(SERVER_SRC_DIR)/%.c, $(SERVER_OBJ_DIR)/%.o, $(SERVER_SRCS))
 
 # Client 源碼（組員的）
-CLIENT_SRCS = $(wildcard $(CLIENT_SRC_DIR)/*.c)
+CLIENT_SRCS = $(CLIENT_SRC_DIR)/banking_client.c
 CLIENT_OBJS = $(patsubst $(CLIENT_SRC_DIR)/%.c, $(CLIENT_OBJ_DIR)/%.o, $(CLIENT_SRCS))
 
 # Common 源碼（共用，支援兩種結構）

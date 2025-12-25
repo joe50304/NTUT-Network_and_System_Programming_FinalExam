@@ -12,8 +12,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
-#include "../common/protocol.h"
-#include "../common/tls_wrapper.h"
+#include "protocol.h"
+#include "tls_wrapper.h"
 
 #define BUFFER_SIZE 1024
 
