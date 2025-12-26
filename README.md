@@ -40,6 +40,8 @@ sudo apt-get install libssl-dev
 ```bash
 ./gen_certs.sh
 ```
+> 如果有錯誤 可以先試試dos2unix gen_certs.sh
+
 > [!WARNING]
 > 本專案產生的憑證與金鑰 (Private Keys) 僅供測試用途，**並非**安全的生產環境金鑰，請勿用於真實機敏場景。
 
